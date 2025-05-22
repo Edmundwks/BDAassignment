@@ -1,0 +1,195 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jolene's Birthday Lucky Draw</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- GSAP CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <!-- Google Fonts: Indie Flower -->
+  <link href="https://fonts.googleapis.com/css2?family=Indie+Flower&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Indie Flower', cursive;
+      background: linear-gradient(to bottom, #ffe4e1, #fff0f5);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+    #paper {
+      display: none;
+      background: #fff5e6;
+      border: 2px solid #ff9999;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      max-width: 280px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #draw-again {
+      z-index: 10;
+    }
+    #gift-box {
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    #gift-box:hover {
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body class="text-pink-800">
+  <div class="text-center">
+    <h1 class="text-4xl md:text-5xl mb-4">Happy Birthday, Jolene! 🎉</h1>
+    <p class="text-xl mb-6">Draw a special note from the box! You have <span id="tries">5</span> tries (or more, shh!)</p>
+    <p class="text-lg mb-4">Draws: <span id="draw-count">0</span>/18</p>
+    <img id="gift-box" src="https://img.icons8.com/color/96/000000/gift.png" alt="Gift Box" class="mx-auto mb-4">
+    <div class="flex flex-col items-center">
+      <div id="paper" class="text-lg"></div>
+      <button id="draw-again" class="mt-4 px-4 py-2 bg-pink-400 text-white rounded-lg hidden hover:bg-pink-500">Draw Again</button>
+    </div>
+  </div>
+
+  <script>
+    const drawables = [
+      { type: "Letter from Taylor Swift", text: "You're so gorgeous, I can't say anything to your face, 'Cause look at your face (gorgeous)" }, // 1st
+      { type: "First Card", text: "Let's draw the box together! Call the best person in the world to do it with you. He's waiting" }, // 2nd
+      { type: "Jolene’s Q", text: "Is there any weights in year 20 that you'd want your 21th to let go off?" },
+      { type: "Jolene’s Q", text: "What's value to you? Was it within reach in 20th?" },
+      { type: "Jolene’s Q", text: "Is there something about you that you'd like to protect from the years to come?" },
+      { type: "Edmund’s Q", text: "What was the most beautiful thing Jolene ever said?" },
+      { type: "Edmund’s Q", text: "If you could have one of Jolene’s trait for a day, what would it be?" },
+      { type: "Promise Card", text: "Play Datriot when Jo is back." },
+      { type: "Promise Card", text: "Watch 5 episodes of Bojack Horseman." },
+      { type: "Letter from Sleeping At Last", text: "If I had only felt how it feels to be yours. Well, I would have known what I've been living for all along" }, // 10th
+      { type: "Promise Card", text: "I’ll share dessert with you when you’re back in KL (Max 1/week)" },
+      { type: "Jolene’s Q", text: "If sleeping at last asked you to be his gf, would u say no" },
+      { type: "Edmund’s Q", text: "If Jolene became an animal, what would she be and why?" },
+      { type: "Promise Card", text: "I’ll draw you a stick-figure comic of our next adventure." },
+      { type: "Letter from God", text: "I will instruct you and teach you in the way you should go; I will counsel you with my eye upon you. Psalms 32:8" },
+      { type: "Action Card", text: "Say Edmund is the best person in the world" }, // 16th (3rd to last)
+      { type: "Action Card", text: "Take a picture to remember this day" }, // 17th (2nd to last)
+      { type: "Final Card", text: "Happy birthday!!" } // 18th (last)
+    ];
+
+    // Custom shuffle to respect fixed positions
+    function customShuffle(drawables) {
+      const fixedIndices = { 0: drawables[0], 1: drawables[1], 9: drawables[9], 15: drawables[15], 16: drawables[16], 17: drawables[17] };
+      const shuffleIndices = [2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14];
+      const shuffleItems = shuffleIndices.map(i => drawables[i]);
+
+      // Fisher-Yates shuffle for the items to be randomized
+      for (let i = shuffleItems.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffleItems[i], shuffleItems[j]] = [shuffleItems[j], shuffleItems[i]];
+      }
+
+      // Rebuild array with fixed and shuffled items
+      const result = [];
+      for (let i = 0; i < drawables.length; i++) {
+        if (fixedIndices[i]) {
+          result[i] = fixedIndices[i];
+        } else {
+          result[i] = shuffleItems.shift();
+        }
+      }
+      return result;
+    }
+
+    const shuffledDrawables = customShuffle([...drawables]);
+    let drawCount = 0;
+    const maxDraws = 18;
+
+    const giftBox = document.getElementById('gift-box');
+    const paper = document.getElementById('paper');
+    const drawAgainBtn = document.getElementById('draw-again');
+    const drawCountDisplay = document.getElementById('draw-count');
+
+    giftBox.addEventListener('click', draw);
+    drawAgainBtn.addEventListener('click', draw);
+
+    function draw() {
+      if (drawCount >= maxDraws) {
+        paper.innerHTML = "All notes drawn! Happy Birthday, Jolene! 💖";
+        paper.style.display = 'block';
+        giftBox.style.display = 'none';
+        drawAgainBtn.style.display = 'none';
+        return;
+      }
+
+      // Shake animation
+      gsap.to(giftBox, {
+        x: '+=10',
+        yoyo: true,
+        repeat: 5,
+        duration: 0.1,
+        onComplete: () => {
+          giftBox.style.display = 'none';
+          showPaper();
+        }
+      });
+    }
+
+    function showPaper() {
+      const drawable = shuffledDrawables[drawCount];
+      paper.innerHTML = `<strong>${drawable.type}</strong><br>${drawable.text}`;
+      paper.style.display = 'block';
+      drawAgainBtn.style.display = 'block';
+
+      // Paper reveal animation
+      gsap.fromTo(paper, { y: 100, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: 'bounce.out' });
+
+      drawCount++;
+      drawCountDisplay.textContent = drawCount;
+
+      if (drawCount >= maxDraws) {
+        drawAgainBtn.style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>
